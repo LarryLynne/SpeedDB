@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="uk">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Дашборд Швидкості Доставки</title>
+    <link rel="stylesheet" href="styles.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+</head>
+<body>
+    <header class="tabs-container">
+        <div class="tabs-group">
+            <button class="tab active" data-target="Нац-Нац">Нац-Нац</button>
+            <button class="tab" data-target="Нац-Парт">Нац-Парт</button>
+            <button class="tab" data-target="Парт-Нац">Парт-Нац</button>
+            <button class="tab" data-target="Парт-Парт">Парт-Парт</button>
+        </div>
+        
+        <div class="date-dropdown">
+            <button class="date-dropdown-btn" id="dateDropdownBtn">Оберіть дати</button>
+            <div class="date-dropdown-content" id="dateFilterContainer"></div>
+        </div>
+    </header>
+
+    <div id="status">Завантаження даних...</div>
+
+    <main class="dashboard-layout">
+        <div class="chart-wrapper">
+            <h3>Швидкість доставки (год:хв / ЕН)</h3>
+            <canvas id="speedChart"></canvas>
+        </div>
+    </main>
+
+    <script src="script.js"></script>
+</body>
+</html>
