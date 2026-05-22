@@ -1,17 +1,27 @@
-// Вставьте сюда вашу ссылку URL развернутого веб-приложения Google Apps Script
-const API_URL = 'https://script.google.com/macros/s/AKfycbwhvq8vLL6s2O2uRC1oGMIho1tkko9IgkaINgsd7D9xe55YpC0uBigKQxZbJtpdHST8/exec?dashboard=speed';
+// Base URL развернутого веб-приложения Google Apps Script
+const BASE_API_URL = 'https://script.google.com/macros/s/AKfycbwhvq8vLL6s2O2uRC1oGMIho1tkko9IgkaINgsd7D9xe55YpC0uBigKQxZbJtpdHST8/exec';
 
-let globalData = []; 
-let currentNets = ['Нац-Нац']; // Список активных фильтров сетей
+let globalSpeedData = []; 
+let globalTimelineData = []; 
+let currentNets = ['Нац-Нац']; // Активные фильтры направлений сетей
 let currentDates = []; 
-let chartSpeed = null;
+let speedChartInstance = null;
+let timelineChartInstance = null;
 
-// --- ФИКСИРОВАННАЯ ПАЛИТРА ДЛЯ КАЖДОГО НАПРАВЛЕНИЯ ---
+// --- ПАЛИТРА ДЛЯ НАПРАВЛЕНИЙ СКОРОСТИ ---
 const netPalette = {
-    'Нац-Нац': { bg: 'rgba(56, 189, 248, 0.5)', border: '#38bdf8' },     // Мягкий небесно-голубой
+    'Нац-Нац': { bg: 'rgba(56, 189, 248, 0.5)', border: '#38bdf8' },     // Небесно-голубой
     'Нац-Парт': { bg: 'rgba(52, 211, 153, 0.5)', border: '#34d399' },    // Пастельно-мятный
-    'Парт-Нац': { bg: 'rgba(192, 132, 252, 0.5)', border: '#c084fc' },    // Припыленная лаванда
-    'Парт-Парт': { bg: 'rgba(251, 191, 36, 0.5)', border: '#fbbf24' }     // Теплый песочно-янтарный
+    'Парт-Нац': { bg: 'rgba(192, 132, 252, 0.5)', border: '#c084fc' },    // Лаванда
+    'Парт-Парт': { bg: 'rgba(251, 191, 36, 0.5)', border: '#fbbf24' }     // Песочно-янтарный
+};
+
+// --- ОБНОВЛЕННАЯ ПАЛИТРА ДЛЯ ТАЙМЛАЙНА МИЛЬ (ТЕПЕРЬ 4 СЕГМЕНТА) ---
+const timelinePalette = {
+    'firstMile': { bg: 'rgba(56, 189, 248, 0.65)', border: '#38bdf8', label: 'Перша миля' },
+    'middleMileRun': { bg: 'rgba(168, 85, 247, 0.65)', border: '#a855f7', label: 'Середня миля (Рух)' },       // Фиолетовый
+    'middleMileIdle': { bg: 'rgba(244, 63, 94, 0.65)', border: '#f43f5e', label: 'Середня миля (Простій)' },  // Кораллово-красный для простоев
+    'lastMile': { bg: 'rgba(52, 211, 153, 0.65)', border: '#34d399', label: 'Остання миля' }
 };
 
 // --- ФУНКЦІЯ КРАСИВОГО ФОРМАТУВАННЯ ДАТИ ---
@@ -33,7 +43,7 @@ function formatHoursToHMM(decimalHours) {
     return `${hrs}:${String(mins).padStart(2, '0')}`;
 }
 
-// --- 1. ОБНОВЛЕННЫЙ ПЛАГИН: ВСЕ ПОДПИСИ НА ОДНОМ УРОВНЕ ВНИЗУ ---
+// --- УНИВЕРСАЛЬНЫЙ ПЛАГИН ДЛЯ ЦИФР НА СТОЛБИКАХ ---
 const customDatalabels = {
     id: 'customDatalabels',
     afterDatasetsDraw(chart) {
@@ -41,7 +51,7 @@ const customDatalabels = {
         ctx.save();
         
         chart.data.datasets.forEach((dataset, datasetIndex) => {
-            if (dataset.type === 'line') return; // Пропускаем линию
+            if (dataset.type === 'line') return; 
             
             const meta = chart.getDatasetMeta(datasetIndex);
             if (meta.hidden) return; 
@@ -53,20 +63,27 @@ const customDatalabels = {
                 let text = formatHoursToHMM(val);
                 ctx.save();
                 
-                // Делаем шрифт крупнее и контрастнее
-                ctx.fillStyle = '#ffffff'; 
-                ctx.font = 'bold 13px Segoe UI'; // Увеличили шрифт до 13px
-                
-                // Фиксируем координату Y у основания (bar.base). 
-                // Смещаем на 12px вверх от линии оси, чтобы текст стоял ровно на "полу" внутри столбика
-                ctx.translate(bar.x, bar.base - 12);
-                ctx.rotate(-Math.PI / 2);
-                
-                // Теперь все надписи растут снизу вверх строго с одной стартовой позиции
-                ctx.textAlign = 'left'; 
-                ctx.textBaseline = 'middle';
-                
-                ctx.fillText(text, 0, 0);
+                if (chart.options.indexAxis === 'y') {
+                    // Горизонтальный график (таймлайн): пишем текст по центру накопленного сегмента
+                    ctx.fillStyle = '#ffffff'; 
+                    ctx.font = 'bold 11px Segoe UI';
+                    ctx.textAlign = 'center'; 
+                    ctx.textBaseline = 'middle';
+                    
+                    const segmentWidth = Math.abs(bar.x - bar.base);
+                    if (segmentWidth > 35) { // Отрисовка если текст физически помещается в блок
+                        ctx.fillText(text, (bar.x + bar.base) / 2, bar.y);
+                    }
+                } else {
+                    // Вертикальный график (скорость): пишем у основания вверх
+                    ctx.fillStyle = '#ffffff'; 
+                    ctx.font = 'bold 13px Segoe UI'; 
+                    ctx.translate(bar.x, bar.base - 12);
+                    ctx.rotate(-Math.PI / 2);
+                    ctx.textAlign = 'left'; 
+                    ctx.textBaseline = 'middle';
+                    ctx.fillText(text, 0, 0);
+                }
                 ctx.restore();
             });
         });
@@ -74,17 +91,17 @@ const customDatalabels = {
     }
 };
 
-// --- 2. ПЛАГИН ДЛЯ ГОРИЗОНТАЛЬНЫХ ОТРЕЗКОВ СРЕДНЕГО ЗНАЧЕНИЯ ---
+// --- ПЛАГИН ДЛЯ ГОРИЗОНТАЛЬНЫХ ОТРЕЗКОВ СРЕДНЕГО ЗНАЧЕНИЯ ---
 const averageLinesPlugin = {
     id: 'averageLinesPlugin',
     afterDatasetsDraw(chart) {
+        if (chart.options.indexAxis === 'y') return; 
+
         const { ctx, scales: { y } } = chart;
-        
         const avgDatasetIdx = chart.data.datasets.findIndex(d => d.label === 'Загальна середня');
         if (avgDatasetIdx === -1) return;
         
         const avgDataset = chart.data.datasets[avgDatasetIdx];
-        
         const barMetas = chart.data.datasets
             .map((d, i) => ({ type: d.type, meta: chart.getDatasetMeta(i) }))
             .filter(d => d.type === 'bar' && !d.meta.hidden);
@@ -114,7 +131,6 @@ const averageLinesPlugin = {
 
             const yPixel = y.getPixelForValue(val);
 
-            // Рисуем отрезок
             ctx.strokeStyle = '#db4455';
             ctx.lineWidth = 3;
             ctx.beginPath();
@@ -122,9 +138,8 @@ const averageLinesPlugin = {
             ctx.lineTo(maxX, yPixel);
             ctx.stroke();
 
-            // Также немного увеличим шрифт над горизонтальной линией среднего значения
             ctx.fillStyle = '#db4455';
-            ctx.font = 'bold 13px Segoe UI'; // Увеличили с 11px до 13px
+            ctx.font = 'bold 13px Segoe UI';
             ctx.textAlign = 'center';
             ctx.textBaseline = 'bottom';
             ctx.fillText(formatHoursToHMM(val), (minX + maxX) / 2, yPixel - 5);
@@ -136,6 +151,7 @@ const averageLinesPlugin = {
 
 Chart.register(customDatalabels, averageLinesPlugin);
 
+// --- КОНФИГУРАЦИЯ СЕТКИ ГРАФИКА СКОРОСТИ ---
 const darkChartOptions = {
     responsive: true,
     maintainAspectRatio: false,
@@ -143,11 +159,7 @@ const darkChartOptions = {
         legend: { 
             display: true,
             position: 'top',
-            labels: {
-                color: '#94a3b8',
-                font: { family: 'Segoe UI', size: 12, weight: 'bold' },
-                padding: 15
-            }
+            labels: { color: '#94a3b8', font: { family: 'Segoe UI', size: 12, weight: 'bold' }, padding: 15 }
         },
         tooltip: {
             callbacks: {
@@ -163,32 +175,65 @@ const darkChartOptions = {
         x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
         y: { 
             beginAtZero: true, 
-            ticks: { 
-                color: '#94a3b8',
-                callback: function(value) { return formatHoursToHMM(value); }
-            }, 
+            ticks: { color: '#94a3b8', callback: function(value) { return formatHoursToHMM(value); } }, 
             grid: { color: '#1e293b' },
             grace: '25%' 
         }
     }
 };
 
+// --- КОНФИГУРАЦИЯ СЕТКИ ТАЙМЛАЙНА ---
+const timelineChartOptions = {
+    indexAxis: 'y', 
+    responsive: true,
+    maintainAspectRatio: false,
+    plugins: {
+        legend: { 
+            display: true,
+            position: 'top',
+            labels: { color: '#94a3b8', font: { family: 'Segoe UI', size: 12, weight: 'bold' }, padding: 15 }
+        },
+        tooltip: {
+            callbacks: {
+                label: function(context) {
+                    let label = context.dataset.label || '';
+                    if (label) label += ': ';
+                    return label + formatHoursToHMM(context.parsed.x);
+                }
+            }
+        }
+    },
+    scales: {
+        x: { 
+            stacked: true,
+            ticks: { color: '#94a3b8', callback: function(value) { return formatHoursToHMM(value); } }, 
+            grid: { color: '#1e293b' } 
+        },
+        y: { 
+            stacked: true,
+            ticks: { color: '#94a3b8' }, 
+            grid: { color: '#1e293b' }
+        }
+    }
+};
+
 window.onload = function() {
-    loadAllData(); 
+    loadAllDashboardData();
     
     document.querySelectorAll('.tab').forEach(tab => {
         tab.addEventListener('click', (e) => {
-            const clickedNet = e.target.dataset.target;
-            if (currentNets.includes(clickedNet)) {
+            const clickedTarget = e.target.dataset.target;
+            
+            if (currentNets.includes(clickedTarget)) {
                 if (currentNets.length > 1) {
-                    currentNets = currentNets.filter(net => net !== clickedNet);
+                    currentNets = currentNets.filter(net => net !== clickedTarget);
                     e.target.classList.remove('active');
                 }
             } else {
-                currentNets.push(clickedNet);
+                currentNets.push(clickedTarget);
                 e.target.classList.add('active');
             }
-            updateViewForCurrentTab();
+            renderAllCharts();
         });
     });
 
@@ -203,34 +248,36 @@ window.onload = function() {
     });
 };
 
-async function loadAllData() {
+// --- СИНХРОННАЯ ПАРАЛЛЕЛЬНАЯ ЗАГРУЗКА ДАННЫХ ---
+async function loadAllDashboardData() {
     document.getElementById('status').innerText = 'Завантаження даних...';
     try {
-        const response = await fetch(API_URL);
-        const result = await response.json();
-        if (!result.success) throw new Error(result.error);
+        const [speedRes, timelineRes] = await Promise.all([
+            fetch(`${BASE_API_URL}?dashboard=speed`).then(r => r.json()),
+            fetch(`${BASE_API_URL}?dashboard=timeline`).then(r => r.json())
+        ]);
         
-        globalData = result.data;
+        if (!speedRes.success) throw new Error(speedRes.error);
+        if (!timelineRes.success) throw new Error(timelineRes.error);
+        
+        globalSpeedData = speedRes.data;
+        globalTimelineData = timelineRes.data;
+        
         document.getElementById('status').innerText = 'Дані успішно завантажені!';
         setTimeout(() => document.getElementById('status').innerText = '', 2000); 
         
-        const uniqueDates = [...new Set(globalData.map(item => item.date))];
+        const datesFromSpeed = globalSpeedData.map(item => item.date);
+        const datesFromTimeline = globalTimelineData.map(item => item.date);
+        const uniqueDates = [...new Set([...datesFromSpeed, ...datesFromTimeline])];
+        
         currentDates = [...uniqueDates]; 
         
         renderDateFilter(uniqueDates);
-        updateViewForCurrentTab();
+        renderAllCharts();
     } catch (error) {
         document.getElementById('status').innerText = `Помилка: ${error.message}`;
         console.error(error);
     }
-}
-
-function updateViewForCurrentTab() {
-    if (globalData.length === 0) {
-        if (chartSpeed) chartSpeed.destroy();
-        return;
-    }
-    renderChartsForDates(currentDates);
 }
 
 function renderDateFilter(dates) {
@@ -251,7 +298,7 @@ function renderDateFilter(dates) {
                 return;
             }
             currentDates = checkedBoxes.map(cb => cb.value);
-            renderChartsForDates(currentDates);
+            renderAllCharts();
         };
         label.appendChild(checkbox);
         label.appendChild(document.createTextNode(formatDisplayDate(date)));
@@ -269,10 +316,11 @@ function updateDropdownButtonText() {
     }
 }
 
-function renderChartsForDates(targetDates) {
+// --- ЕДИНАЯ ФУНКЦИЯ ОТРИСОВКИ ОБОИХ ГРАФИКОВ ---
+function renderAllCharts() {
     updateDropdownButtonText();
     
-    const sortedDates = [...targetDates].sort((a, b) => {
+    const sortedDates = [...currentDates].sort((a, b) => {
         const parseDate = (str) => {
             const p = str.split('.');
             return new Date(p[2], p[1] - 1, p[0]);
@@ -280,20 +328,23 @@ function renderChartsForDates(targetDates) {
         return parseDate(a) - parseDate(b);
     });
 
-    const datasets = [];
+    const chartLabels = sortedDates.map(formatDisplayDate);
 
-    // 1. СТОЛБИКИ ДЛЯ ВЫБРАННЫХ НАПРАВЛЕНИЙ
+    // ==========================================
+    // 1. РЕНДЕРИНГ ВЕРТИКАЛЬНОГО ГРАФИКА СКОРОСТИ
+    // ==========================================
+    const speedDatasets = [];
     currentNets.forEach(netKey => {
         const [targetNetA, targetNetB] = netKey.split('-');
         const colors = netPalette[netKey];
 
         const dataForNet = sortedDates.map(date => {
-            const row = globalData.find(i => i.netA === targetNetA && i.netB === targetNetB && i.date === date);
+            const row = globalSpeedData.find(i => i.netA === targetNetA && i.netB === targetNetB && i.date === date);
             if (!row || row.eh === 0) return 0;
             return row.fondHours / row.eh;
         });
 
-        datasets.push({
+        speedDatasets.push({
             type: 'bar',
             label: netKey,
             data: dataForNet,
@@ -303,10 +354,9 @@ function renderChartsForDates(targetDates) {
         });
     });
 
-    // 2. ДАТАСЕТ ДЛЯ ОБЩЕГО СРЕДНЕГО (ЕСЛИ ВЫБРАНО > 1 КРИТЕРИЯ)
     if (currentNets.length > 1) {
         const globalAverageData = sortedDates.map(date => {
-            const itemsForDate = globalData.filter(item => {
+            const itemsForDate = globalSpeedData.filter(item => {
                 const itemNetKey = `${item.netA}-${item.netB}`;
                 return currentNets.includes(itemNetKey) && item.date === date;
             });
@@ -321,7 +371,7 @@ function renderChartsForDates(targetDates) {
             return totalEh > 0 ? (totalFondHours / totalEh) : 0;
         });
 
-        datasets.push({
+        speedDatasets.push({
             type: 'line',
             label: 'Загальна середня',
             data: globalAverageData,
@@ -333,16 +383,40 @@ function renderChartsForDates(targetDates) {
         });
     }
 
-    const chartLabels = sortedDates.map(formatDisplayDate);
-
     const ctxSpeed = document.getElementById('speedChart').getContext('2d');
-    if (chartSpeed) chartSpeed.destroy();
-    
-    chartSpeed = new Chart(ctxSpeed, {
-        data: {
-            labels: chartLabels,
-            datasets: datasets
-        },
+    if (speedChartInstance) speedChartInstance.destroy();
+    speedChartInstance = new Chart(ctxSpeed, {
+        data: { labels: chartLabels, datasets: speedDatasets },
         options: darkChartOptions
+    });
+
+    // ==========================================
+    // 2. РЕНДЕРИНГ ГОРИЗОНТАЛЬНОГО ТАЙМЛАЙНА (ТЕПЕРЬ 4 СЕГМЕНТА)
+    // ==========================================
+    const timelineDatasets = [];
+    const milesKeys = ['firstMile', 'middleMileRun', 'middleMileIdle', 'lastMile']; // Добавлены новые ключи
+    
+    milesKeys.forEach(mileKey => {
+        const config = timelinePalette[mileKey];
+        const dataForMile = sortedDates.map(date => {
+            const row = globalTimelineData.find(i => i.date === date);
+            return row ? row[mileKey] : 0;
+        });
+
+        timelineDatasets.push({
+            type: 'bar',
+            label: config.label,
+            data: dataForMile,
+            backgroundColor: config.bg,
+            borderColor: config.border,
+            borderWidth: 1
+        });
+    });
+
+    const ctxTimeline = document.getElementById('timelineChart').getContext('2d');
+    if (timelineChartInstance) timelineChartInstance.destroy();
+    timelineChartInstance = new Chart(ctxTimeline, {
+        data: { labels: chartLabels, datasets: timelineDatasets },
+        options: timelineChartOptions
     });
 }
