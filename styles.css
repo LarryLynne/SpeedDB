@@ -132,62 +132,7 @@ canvas { flex-grow: 1; }
 .dashboard-layout::-webkit-scrollbar-thumb:hover, .date-dropdown-content::-webkit-scrollbar-thumb:hover { background: #00bcff; }
 
 /* АДАПТИВНОСТЬ ДЛЯ СМАРТФОНОВ */
-@media (max-width: 600px) {
-    body { padding: 10px; }
-    .tabs-container { flex-direction: column; align-items: stretch; gap: 12px; padding-bottom: 12px; }
-    .tabs-group { width: 100%; }
-    .tab { flex: 1; text-align: center; padding: 10px 5px; font-size: 12px; }
-    .date-dropdown { width: 100%; }
-    
-    .chart-wrapper { height: 320px; padding: 10px; }
-    .chart-wrapper h3 { font-size: 11px; margin-bottom: 5px; }
 
-    /* --- Адаптив для вкладки Таймлайн --- */
-    #timelineWrapper {
-        height: auto; /* Разрешаем общему контейнеру расти вниз, чтобы уместить фильтры */
-    }
-
-    .timeline-layout {
-        flex-direction: column; /* Перестраиваем в одну вертикальную колонку */
-        gap: 12px;
-    }
-
-    .filter-sidebar {
-        width: 100%;
-        min-width: 100%;
-        flex-direction: row; /* Блоки "Мережа" и "Категорія" теперь стоят рядом */
-        gap: 15px;
-        overflow-y: visible; /* Отключаем вертикальный скролл панели */
-    }
-
-    .filter-block {
-        flex: 1;
-        min-width: 0; /* Позволяет блокам правильно сжиматься внутри flex-row */
-    }
-
-    .btn-group {
-        flex-direction: row; /* Кнопки выстраиваются в горизонтальную линию */
-        overflow-x: auto;    /* Включаем горизонтальную прокрутку пальцем */
-        gap: 6px;
-        padding-bottom: 6px; /* Зазор для красивого скроллбара */
-    }
-
-    .filter-btn {
-        flex-shrink: 0;      /* Запрещаем кнопкам сжиматься до неузнаваемости */
-        padding: 6px 12px;
-        text-align: center;
-    }
-
-    .timeline-chart-container {
-        height: 280px;       /* Фиксируем высоту самого графика, чтобы он не схлопывался */
-        min-height: 280px;
-    }
-
-    /* Аккуратный тонкий скроллбар для мобильных фильтров */
-    .btn-group::-webkit-scrollbar { height: 3px; }
-    .btn-group::-webkit-scrollbar-track { background: transparent; }
-    .btn-group::-webkit-scrollbar-thumb { background: #232a3b; border-radius: 2px; }
-}
 
 /* Главная навигация между отчетами */
 .main-nav {
@@ -343,4 +288,61 @@ canvas { flex-grow: 1; }
 /* Трюк для выравнивания календаря в группе фильтров по правому краю */
 .filter-group .date-dropdown {
     margin-left: auto;
+}
+
+@media (max-width: 600px) {
+    body { padding: 10px; }
+    .tabs-container { flex-direction: column; align-items: stretch; gap: 12px; padding-bottom: 12px; }
+    .tabs-group { width: 100%; }
+    .tab { flex: 1; text-align: center; padding: 10px 5px; font-size: 12px; }
+    .date-dropdown { width: 100%; }
+    
+    .chart-wrapper { height: 320px; padding: 10px; }
+    .chart-wrapper h3 { font-size: 11px; margin-bottom: 5px; }
+
+    /* --- Адаптив для вкладки Таймлайн --- */
+    #timelineWrapper {
+        height: auto; /* Разрешаем общему контейнеру расти вниз, чтобы уместить фильтры */
+    }
+
+    .timeline-layout {
+        flex-direction: column; /* Перестраиваем в одну вертикальную колонку */
+        gap: 12px;
+    }
+
+    .filter-sidebar {
+        width: 100%;
+        min-width: 100%;
+        flex-direction: row; /* Блоки "Мережа" и "Категорія" теперь стоят рядом */
+        gap: 15px;
+        overflow-y: visible; /* Отключаем вертикальный скролл панели */
+    }
+
+    .filter-block {
+        flex: 1;
+        min-width: 0; /* Позволяет блокам правильно сжиматься внутри flex-row */
+    }
+
+    .btn-group {
+        flex-direction: row; /* Кнопки выстраиваются в горизонтальную линию */
+        overflow-x: auto;    /* Включаем горизонтальную прокрутку пальцем */
+        gap: 6px;
+        padding-bottom: 6px; /* Зазор для красивого скроллбара */
+    }
+
+    .filter-btn {
+        flex-shrink: 0;      /* Запрещаем кнопкам сжиматься до неузнаваемости */
+        padding: 6px 12px;
+        text-align: center;
+    }
+
+    .timeline-chart-container {
+        height: 280px;       /* Фиксируем высоту самого графика, чтобы он не схлопывался */
+        min-height: 280px;
+    }
+
+    /* Аккуратный тонкий скроллбар для мобильных фильтров */
+    .btn-group::-webkit-scrollbar { height: 3px; }
+    .btn-group::-webkit-scrollbar-track { background: transparent; }
+    .btn-group::-webkit-scrollbar-thumb { background: #232a3b; border-radius: 2px; }
 }
