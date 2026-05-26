@@ -141,3 +141,159 @@ canvas { flex-grow: 1; }
     .chart-wrapper { height: 320px; padding: 10px; } /* <--- Увеличили высоту на смартфонах */
     .chart-wrapper h3 { font-size: 11px; margin-bottom: 5px; }
 }
+
+/* Главная навигация между отчетами */
+.main-nav {
+    display: flex;
+    gap: 10px;
+    margin-bottom: 20px;
+    width: 100%;
+    max-width: 850px;
+}
+.nav-btn {
+    flex: 1;
+    padding: 12px;
+    font-size: 14px;
+    font-weight: bold;
+    color: #94a3b8;
+    background: #141b2d;
+    border: 1px solid #1e293b;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+.nav-btn:hover {
+    background: #1e293b;
+    color: #fff;
+}
+.nav-btn.active {
+    background: #00bcff;
+    color: #0b0f19;
+    border-color: #00bcff;
+    box-shadow: 0 0 15px rgba(0, 188, 255, 0.4);
+}
+
+/* Стилизация выпадающих селекторов */
+.filter-group {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    width: 100%;       /* <--- Растягиваем контейнер фильтров на всю ширину шапки */
+    align-items: center;
+}
+
+/* Элегантный трюк: заставляем календарь автоматически улетать к правому краю */
+.filter-group .date-dropdown {
+    margin-left: auto; 
+}
+.select-filter {
+    padding: 8px 12px;
+    background-color: #192239;
+    border: 1px solid #232a3b;
+    border-radius: 6px;
+    color: #e2e8f0;
+    font-size: 13px;
+    font-weight: bold;
+    outline: none;
+    cursor: pointer;
+    transition: border-color 0.2s;
+}
+.select-filter:focus, .select-filter:hover {
+    border-color: #00bcff;
+}
+.select-filter option {
+    background-color: #141b2d;
+    color: #e2e8f0;
+}
+.hidden {
+    display: none !important;
+}
+
+/* --- СТИЛИ ДЛЯ ТРЬОХКОЛОНОЧНОГО МАКЕТУ ТАЙМЛАЙНУ --- */
+.timeline-layout {
+    display: flex;
+    flex-direction: row;
+    gap: 15px;
+    width: 100%;
+    flex-grow: 1;
+    min-height: 0;
+    margin-top: 5px;
+}
+
+/* Боковые панели фильтров */
+.filter-sidebar {
+    display: flex;
+    flex-direction: column;
+    gap: 15px;
+    width: 135px;
+    min-width: 135px;
+    overflow-y: auto;
+    padding-right: 4px;
+}
+
+/* Центральный контейнер для самого графика */
+.timeline-chart-container {
+    flex-grow: 1;
+    position: relative;
+    min-width: 0;
+    height: 100%;
+}
+
+/* Внутренние блоки категорий в сайдбарах */
+.filter-block {
+    display: flex;
+    flex-direction: column;
+}
+.filter-block h4 {
+    font-size: 11px;
+    color: #00bcff;
+    text-transform: uppercase;
+    margin-bottom: 6px;
+    letter-spacing: 0.5px;
+}
+
+/* Вертикальные группы кнопок */
+.btn-group {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+/* Сами кнопки фильтрации */
+.filter-btn {
+    padding: 6px 10px;
+    font-size: 11px;
+    font-weight: bold;
+    color: #94a3b8;
+    background: #192239;
+    border: 1px solid #232a3b;
+    border-radius: 4px;
+    cursor: pointer;
+    text-align: left;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis; /* Плавное усечение слишком длинных названий */
+    transition: all 0.15s ease;
+}
+.filter-btn:hover {
+    background: #1e293b;
+    color: #fff;
+    border-color: #94a3b8;
+}
+.filter-btn.active {
+    background: #141b2d;
+    color: #00bcff;
+    border-color: #00bcff;
+    box-shadow: 0 0 8px rgba(0, 188, 255, 0.15);
+}
+
+/* Скроллбары для сайдбаров (на случай большого количества кнопок) */
+.filter-sidebar::-webkit-scrollbar { width: 4px; }
+.filter-sidebar::-webkit-scrollbar-track { background: #141b2d; }
+.filter-sidebar::-webkit-scrollbar-thumb { background: #232a3b; border-radius: 2px; }
+.filter-sidebar::-webkit-scrollbar-thumb:hover { background: #00bcff; }
+
+/* Трюк для выравнивания календаря в группе фильтров по правому краю */
+.filter-group .date-dropdown {
+    margin-left: auto;
+}
