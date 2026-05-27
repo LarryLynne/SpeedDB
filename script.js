@@ -2,17 +2,25 @@ const BASE_API_URL = 'https://script.google.com/macros/s/AKfycbzrcilOHN938Q9stHX
 
 let globalSpeedData = []; 
 let globalTimelineData = []; 
+let globalTransportData = {}; // Изолированное хранилище для транспорта
 let currentView = 'speed'; 
 let currentNets = ['Нац-Нац']; 
 
 let currentSpeedDates = []; 
 let currentTimelineDates = []; 
+let currentTransportDates = []; // Изолированные даты для транспорта
+let currentTransportTab = 'Регіональна'; // Активный под-таб транспорта
 
 // Стан фільтрів таймлайну
 let timelineFilters = { netA: 'all', netB: 'all', catA: 'all', catB: 'all' };
 
 let speedChartInstance = null;
 let timelineChartInstance = null;
+let chartCost = null;
+let chartUtil = null;
+let chartLoad = null;
+
+let transportFilters = { frdA: 'all', frdB: 'all' };
 
 const netPalette = {
     'Нац-Нац': { bg: 'rgba(56, 189, 248, 0.5)', border: '#38bdf8' },
@@ -40,11 +48,59 @@ function formatHoursToHMM(decimalHours) {
     return `${Math.floor(totalMinutes / 60)}:${String(totalMinutes % 60).padStart(2, '0')}`;
 }
 
+function getTransportChartColors(metric, idx) {
+    const palettes = {
+        cost: {
+            bg: ['rgba(0, 188, 255, 0.6)', 'rgba(0, 102, 204, 0.6)', 'rgba(140, 0, 255, 0.6)', 'rgba(0, 255, 204, 0.6)'],
+            border: ['#00bcff', '#0066cc', '#8c00ff', '#00ffcc']
+        },
+        util: {
+            bg: ['rgba(242, 100, 25, 0.6)', 'rgba(219, 68, 85, 0.6)', 'rgba(242, 175, 25, 0.6)', 'rgba(200, 50, 0, 0.6)'],
+            border: ['#f26419', '#db4455', '#f2af19', '#c83200']
+        },
+        load: {
+            bg: ['rgba(0, 204, 153, 0.6)', 'rgba(0, 153, 204, 0.6)', 'rgba(102, 204, 0, 0.6)', 'rgba(0, 204, 102, 0.6)'],
+            border: ['#00cc99', '#0099cc', '#66cc00', '#00cc66']
+        }
+    };
+    const p = palettes[metric];
+    const i = idx % p.bg.length;
+    return { bg: p.bg[i], border: p.border[i] };
+}
+
 const customDatalabels = {
     id: 'customDatalabels',
     afterDatasetsDraw(chart) {
         const { ctx } = chart;
         ctx.save();
+
+        // Проверка: если это транспортный график, применяем старый компактный стиль подписей
+        if (['costChart', 'utilizationChart', 'loadChart'].includes(chart.canvas.id)) {
+            chart.data.datasets.forEach((dataset, datasetIndex) => {
+                const meta = chart.getDatasetMeta(datasetIndex);
+                if (meta.hidden) return; 
+                
+                meta.data.forEach((bar, index) => {
+                    const val = dataset.data[index];
+                    if (val === null || val === undefined) return;
+                    
+                    let text = val % 1 === 0 ? val : Number(val).toFixed(2);
+                    if (chart.canvas.id === 'utilizationChart' || chart.canvas.id === 'loadChart') {
+                        text += '%';
+                    }
+                    
+                    ctx.fillStyle = '#94a3b8'; 
+                    ctx.font = 'bold 10px Segoe UI'; 
+                    ctx.textAlign = 'center';        
+                    ctx.textBaseline = 'bottom';     
+                    ctx.fillText(text, bar.x, bar.y - 4);
+                });
+            });
+            ctx.restore();
+            return;
+        }
+
+        // Базовая логика для вкладок Скорости и Таймлайна
         chart.data.datasets.forEach((dataset, datasetIndex) => {
             if (dataset.type === 'line') return; 
             const meta = chart.getDatasetMeta(datasetIndex);
@@ -129,11 +185,11 @@ const darkChartOptions = {
     responsive: true, maintainAspectRatio: false,
     plugins: {
         legend: { display: true, position: 'top', labels: { color: '#94a3b8', font: { family: 'Segoe UI', size: 12, weight: 'bold' } } },
-        tooltip: { callbacks: { label: (c) => (c.dataset.label || '') + ': ' + formatHoursToHMM(c.parsed.y) } }
+        tooltip: { callbacks: { label: (c) => (c.dataset.label || '') + ': ' + (['costChart', 'utilizationChart', 'loadChart'].includes(c.chart.canvas.id) ? c.parsed.y : formatHoursToHMM(c.parsed.y)) } }
     },
     scales: {
         x: { ticks: { color: '#94a3b8' }, grid: { color: '#1e293b' } },
-        y: { beginAtZero: true, ticks: { color: '#94a3b8', callback: (v) => formatHoursToHMM(v) }, grid: { color: '#1e293b' }, grace: '25%' }
+        y: { beginAtZero: true, ticks: { color: '#94a3b8', callback: function(v) { return ['costChart', 'utilizationChart', 'loadChart'].includes(this.chart.canvas.id) ? v : formatHoursToHMM(v); } }, grid: { color: '#1e293b' }, grace: '25%' }
     }
 };
 
@@ -163,24 +219,31 @@ function setupNavigation() {
             
             currentView = e.target.dataset.view;
             
-            if (currentView === 'speed') {
-                document.getElementById('speedFilters').classList.remove('hidden');
-                document.getElementById('speedWrapper').classList.remove('hidden');
-                document.getElementById('timelineFilters').classList.add('hidden');
-                document.getElementById('timelineWrapper').classList.add('hidden');
-            } else {
-                document.getElementById('speedFilters').classList.add('hidden');
-                document.getElementById('speedWrapper').classList.add('hidden');
-                document.getElementById('timelineFilters').classList.remove('hidden');
-                document.getElementById('timelineWrapper').classList.remove('hidden');
+            // Скрытие/отображение фильтров и контейнеров
+            document.getElementById('speedFilters').classList.toggle('hidden', currentView !== 'speed');
+            document.getElementById('speedWrapper').classList.toggle('hidden', currentView !== 'speed');
+            
+            document.getElementById('timelineFilters').classList.toggle('hidden', currentView !== 'timeline');
+            document.getElementById('timelineWrapper').classList.toggle('hidden', currentView !== 'timeline');
+            
+            document.getElementById('transportFilters').classList.toggle('hidden', currentView !== 'transport');
+            document.getElementById('transportWrapper').classList.toggle('hidden', currentView !== 'transport');
+            
+            if (currentView === 'transport') {
+                const tabData = globalTransportData[currentTransportTab] || [];
+                const uniqueDates = [...new Set(tabData.map(item => item.date))];
+                renderDateFilter('transport', uniqueDates);
+                populateTransportFrdFilters(); // Перестраиваем списки ФРД при переходе на вкладку
             }
+
             renderAllCharts();
         });
     });
 }
 
 function setupFilters() {
-    document.querySelectorAll('.tab').forEach(tab => {
+    // Фильтры вкладки Скорость
+    document.querySelectorAll('.tab:not(.transport-tab)').forEach(tab => {
         tab.addEventListener('click', (e) => {
             const target = e.target.dataset.target;
             if (currentNets.includes(target)) {
@@ -196,12 +259,39 @@ function setupFilters() {
         });
     });
 
+    // Фильтры вкладки Транспорт (под-табы)
+    document.querySelectorAll('.transport-tab').forEach(tab => {
+        tab.addEventListener('click', (e) => {
+            document.querySelectorAll('.transport-tab').forEach(t => t.classList.remove('active'));
+            e.target.classList.add('active');
+            currentTransportTab = e.target.dataset.target;
+
+            // Сброс фильтров ФРД при переключении направлений
+            transportFilters.frdA = 'all';
+            transportFilters.frdB = 'all';
+
+            const tabData = globalTransportData[currentTransportTab] || [];
+            const uniqueDates = [...new Set(tabData.map(item => item.date))];
+            currentTransportDates = currentTransportDates.filter(d => uniqueDates.includes(d));
+            
+            if (currentTransportDates.length === 0 && uniqueDates.length > 0) {
+                currentTransportDates = [uniqueDates[0]];
+            }
+
+            renderDateFilter('transport', uniqueDates);
+            populateTransportFrdFilters(); // Динамическое заполнение селекторов ФРД
+            renderAllCharts();
+        });
+    });
+
+    // Обработчики выпадающих списков дат
     const speedBtn = document.getElementById('speedDateDropdownBtn');
     const speedContent = document.getElementById('speedDateFilterContainer');
     speedBtn.addEventListener('click', (e) => { 
         e.stopPropagation(); 
         speedContent.classList.toggle('show'); 
         document.getElementById('timelineDateFilterContainer').classList.remove('show');
+        document.getElementById('transportDateFilterContainer').classList.remove('show');
     });
 
     const timelineBtn = document.getElementById('timelineDateDropdownBtn');
@@ -210,30 +300,56 @@ function setupFilters() {
         e.stopPropagation(); 
         timelineContent.classList.toggle('show'); 
         speedContent.classList.remove('show');
+        document.getElementById('transportDateFilterContainer').classList.remove('show');
+    });
+
+    const transportBtn = document.getElementById('transportDateDropdownBtn');
+    const transportContent = document.getElementById('transportDateFilterContainer');
+    transportBtn.addEventListener('click', (e) => {
+        e.stopPropagation();
+        transportContent.classList.toggle('show');
+        document.getElementById('speedDateFilterContainer').classList.remove('show');
+        document.getElementById('timelineDateFilterContainer').classList.remove('show');
     });
 
     document.addEventListener('click', (e) => { 
         if (!e.target.closest('.date-dropdown')) {
             speedContent.classList.remove('show'); 
             timelineContent.classList.remove('show'); 
+            transportContent.classList.remove('show'); 
         }
+    });
+
+    // Слушатели изменения выпадающих списков ФРД
+    const selectFrdA = document.getElementById('transportSelectFrdA');
+    selectFrdA.addEventListener('change', (e) => {
+        transportFilters.frdA = e.target.value;
+        renderAllCharts();
+    });
+
+    const selectFrdB = document.getElementById('transportSelectFrdB');
+    selectFrdB.addEventListener('change', (e) => {
+        transportFilters.frdB = e.target.value;
+        renderAllCharts();
     });
 }
 
 async function loadAllDashboardData() {
     document.getElementById('status').innerText = 'Завантаження даних...';
     try {
-        const [speedRes, timelineRes] = await Promise.all([
+        const [speedRes, timelineRes, transportRes] = await Promise.all([
             fetch(`${BASE_API_URL}?dashboard=speed`).then(r => r.json()),
-            fetch(`${BASE_API_URL}?dashboard=timeline`).then(r => r.json())
+            fetch(`${BASE_API_URL}?dashboard=timeline`).then(r => r.json()),
+            fetch(`${BASE_API_URL}`).then(r => r.json()) // Запрос транспорта (ветка else на бэке)
         ]);
         
-        if (!speedRes.success || !timelineRes.success) throw new Error(speedRes.error || timelineRes.error);
+        if (!speedRes.success || !timelineRes.success || !transportRes.success) {
+            throw new Error(speedRes.error || timelineRes.error || transportRes.error);
+        }
         
         globalSpeedData = speedRes.data;
         globalTimelineData = timelineRes.data;
-        
-        console.log("Структура першого об'єкта в масиві:", globalTimelineData[0]);
+        globalTransportData = transportRes.data;
         
         document.getElementById('status').innerText = 'Дані успішно завантажені!';
         setTimeout(() => document.getElementById('status').innerText = '', 2000); 
@@ -241,13 +357,20 @@ async function loadAllDashboardData() {
         const speedDates = [...new Set(globalSpeedData.map(i => i.date))];
         const timelineDates = [...new Set(globalTimelineData.map(i => i.date))];
         
+        const transportDataForTab = globalTransportData[currentTransportTab] || [];
+        const transportDates = [...new Set(transportDataForTab.map(i => i.date))];
+        
         currentSpeedDates = [...speedDates]; 
         currentTimelineDates = [...timelineDates]; 
+        currentTransportDates = transportDates.length > 0 ? [transportDates[0]] : [];
         
         populateTimelineButtons();
+
+        populateTransportFrdFilters(); // Построить фильтры ФРД при первой загрузке
         
         renderDateFilter('speed', speedDates);
         renderDateFilter('timeline', timelineDates);
+        renderDateFilter('transport', transportDates);
         
         renderAllCharts();
     } catch (error) {
@@ -256,7 +379,6 @@ async function loadAllDashboardData() {
     }
 }
 
-// --- ДИНАМІЧНА ГЕНЕРАЦІЯ НАБОРІВ КНОПОК ЗАМІСТЬ СЕЛЕКТОРІВ ---
 function populateTimelineButtons() {
     const netAOptions = [...new Set(globalTimelineData.map(item => item.netA).filter(Boolean))];
     const netBOptions = [...new Set(globalTimelineData.map(item => item.netB).filter(Boolean))];
@@ -268,7 +390,6 @@ function populateTimelineButtons() {
         if (!container) return;
         container.innerHTML = '';
 
-        // Головна кнопка "Всі"
         const allBtn = document.createElement('button');
         allBtn.className = 'filter-btn';
         allBtn.innerText = 'Всі';
@@ -281,7 +402,6 @@ function populateTimelineButtons() {
         };
         container.appendChild(allBtn);
 
-        // Кнопки унікальних значень
         options.sort().forEach(opt => {
             const btn = document.createElement('button');
             btn.className = 'filter-btn';
@@ -305,8 +425,12 @@ function populateTimelineButtons() {
 }
 
 function renderDateFilter(view, dates) {
-    const containerId = view === 'speed' ? 'speedDateFilterContainer' : 'timelineDateFilterContainer';
+    let containerId = 'speedDateFilterContainer';
+    if (view === 'timeline') containerId = 'timelineDateFilterContainer';
+    if (view === 'transport') containerId = 'transportDateFilterContainer';
+
     const container = document.getElementById(containerId);
+    if (!container) return;
     container.innerHTML = '';
     
     dates.forEach((date) => {
@@ -323,12 +447,20 @@ function renderDateFilter(view, dates) {
                 currentSpeedDates = checkedBoxes.map(cb => cb.value);
                 renderAllCharts();
             };
-        } else {
+        } else if (view === 'timeline') {
             checkbox.checked = currentTimelineDates.includes(date);
             checkbox.onchange = function() {
                 let checkedBoxes = Array.from(container.querySelectorAll('input[type="checkbox"]:checked'));
                 if (checkedBoxes.length === 0) { checkbox.checked = true; return; }
                 currentTimelineDates = checkedBoxes.map(cb => cb.value);
+                renderAllCharts();
+            };
+        } else if (view === 'transport') {
+            checkbox.checked = currentTransportDates.includes(date);
+            checkbox.onchange = function() {
+                let checkedBoxes = Array.from(container.querySelectorAll('input[type="checkbox"]:checked'));
+                if (checkedBoxes.length === 0) { checkbox.checked = true; return; }
+                currentTransportDates = checkedBoxes.map(cb => cb.value);
                 renderAllCharts();
             };
         }
@@ -347,6 +479,10 @@ function updateDropdownButtonText(view) {
     if (view === 'timeline' || view === 'all') {
         const timelineBtn = document.getElementById('timelineDateDropdownBtn');
         if (timelineBtn) timelineBtn.innerText = currentTimelineDates.length === 1 ? formatDisplayDate(currentTimelineDates[0]) : `Обрано дат: ${currentTimelineDates.length}`;
+    }
+    if (view === 'transport' || view === 'all') {
+        const transportBtn = document.getElementById('transportDateDropdownBtn');
+        if (transportBtn) transportBtn.innerText = currentTransportDates.length === 1 ? formatDisplayDate(currentTransportDates[0]) : `Обрано дат: ${currentTransportDates.length}`;
     }
 }
 
@@ -437,5 +573,153 @@ function renderAllCharts() {
         const ctxTimeline = document.getElementById('timelineChart').getContext('2d');
         if (timelineChartInstance) timelineChartInstance.destroy();
         timelineChartInstance = new Chart(ctxTimeline, { type: 'bar', data: { labels: timelineLabels, datasets: timelineDatasets }, options: timelineChartOptions });
+    
+    } else if (currentView === 'transport') {
+        const tabData = globalTransportData[currentTransportTab] || [];
+        
+        // 1. Фильтрация по выбранным датам
+        let filteredRaw = tabData.filter(item => currentTransportDates.includes(item.date));
+        
+        // 2. Новое: Фильтрация по выбранному ФРД виїзду
+        if (transportFilters.frdA !== 'all') {
+            filteredRaw = filteredRaw.filter(item => item.frdA === transportFilters.frdA);
+        }
+        
+        // 3. Новое: Фильтрация по выбранному ФРД приїзду (актуально только для Межрегиональной)
+        if (currentTransportTab === 'Міжрегіональна' && transportFilters.frdB !== 'all') {
+            filteredRaw = filteredRaw.filter(item => item.frdB === transportFilters.frdB);
+        }
+        
+        const vehicleTypes = [...new Set(filteredRaw.map(i => i.type))];
+        const showLegend = currentTransportDates.length > 1;
+
+        // 1. ГРАФИК СТОИМОСТИ
+        const sortedTypesCost = [...vehicleTypes].sort((a, b) => {
+            const avgA = filteredRaw.filter(i => i.type === a).reduce((sum, i) => sum + (Number(i.cost) || 0), 0) / (filteredRaw.filter(i => i.type === a).length || 1);
+            const avgB = filteredRaw.filter(i => i.type === b).reduce((sum, i) => sum + (Number(i.cost) || 0), 0) / (filteredRaw.filter(i => i.type === b).length || 1);
+            return avgB - avgA;
+        });
+
+        const datasetsCost = currentTransportDates.map((date, idx) => {
+            const colors = getTransportChartColors('cost', idx);
+            return {
+                label: formatDisplayDate(date),
+                data: sortedTypesCost.map(type => {
+                    const found = filteredRaw.find(i => i.type === type && i.date === date);
+                    return found ? found.cost : 0;
+                }),
+                backgroundColor: colors.bg,
+                borderColor: colors.border,
+                borderWidth: 1
+            };
+        });
+
+        const ctxCost = document.getElementById('costChart').getContext('2d');
+        if (chartCost) chartCost.destroy();
+        const costOptions = JSON.parse(JSON.stringify(darkChartOptions));
+        costOptions.plugins.legend.display = showLegend;
+        chartCost = new Chart(ctxCost, { type: 'bar', data: { labels: sortedTypesCost, datasets: datasetsCost }, options: costOptions });
+
+        // 2. ГРАФИК УТИЛИЗАЦИИ (с авто-скрытием)
+        const hasUtilization = filteredRaw.some(i => i.utilization !== undefined && i.utilization !== null && i.utilization !== '');
+        const utilWrapper = document.getElementById('utilizationWrapper');
+
+        if (hasUtilization) {
+            utilWrapper.style.display = 'flex'; 
+            const sortedTypesUtil = [...vehicleTypes].sort((a, b) => {
+                const dataA = filteredRaw.filter(i => i.type === a && i.utilization !== null);
+                const dataB = filteredRaw.filter(i => i.type === b && i.utilization !== null);
+                const avgA = dataA.reduce((sum, i) => sum + (Number(i.utilization) || 0), 0) / (dataA.length || 1);
+                const avgB = dataB.reduce((sum, i) => sum + (Number(i.utilization) || 0), 0) / (dataB.length || 1);
+                return avgB - avgA;
+            });
+
+            const datasetsUtil = currentTransportDates.map((date, idx) => {
+                const colors = getTransportChartColors('util', idx);
+                return {
+                    label: formatDisplayDate(date),
+                    data: sortedTypesUtil.map(type => {
+                        const found = filteredRaw.find(i => i.type === type && i.date === date);
+                        return found ? found.utilization : 0;
+                    }),
+                    backgroundColor: colors.bg,
+                    borderColor: colors.border,
+                    borderWidth: 1
+                };
+            });
+
+            const ctxUtil = document.getElementById('utilizationChart').getContext('2d');
+            if (chartUtil) chartUtil.destroy();
+            const utilOptions = JSON.parse(JSON.stringify(darkChartOptions));
+            utilOptions.plugins.legend.display = showLegend;
+            chartUtil = new Chart(ctxUtil, { type: 'bar', data: { labels: sortedTypesUtil, datasets: datasetsUtil }, options: utilOptions });
+        } else {
+            utilWrapper.style.display = 'none'; 
+            if (chartUtil) chartUtil.destroy();
+        }
+
+        // 3. ГРАФИК ЗАГРУЗКИ
+        const sortedTypesLoad = [...vehicleTypes].sort((a, b) => {
+            const avgA = filteredRaw.filter(i => i.type === a).reduce((sum, i) => sum + (Number(i.load) || 0), 0) / (filteredRaw.filter(i => i.type === a).length || 1);
+            const avgB = filteredRaw.filter(i => i.type === b).reduce((sum, i) => sum + (Number(i.load) || 0), 0) / (filteredRaw.filter(i => i.type === b).length || 1);
+            return avgB - avgA;
+        });
+
+        const datasetsLoad = currentTransportDates.map((date, idx) => {
+            const colors = getTransportChartColors('load', idx);
+            return {
+                label: formatDisplayDate(date),
+                data: sortedTypesLoad.map(type => {
+                    const found = filteredRaw.find(i => i.type === type && i.date === date);
+                    return found ? found.load : 0;
+                }),
+                backgroundColor: colors.bg,
+                borderColor: colors.border,
+                borderWidth: 1
+            };
+        });
+
+        const ctxLoad = document.getElementById('loadChart').getContext('2d');
+        if (chartLoad) chartLoad.destroy();
+        const loadOptions = JSON.parse(JSON.stringify(darkChartOptions));
+        loadOptions.plugins.legend.display = showLegend;
+        chartLoad = new Chart(ctxLoad, { type: 'bar', data: { labels: sortedTypesLoad, datasets: datasetsLoad }, options: loadOptions });
+    }
+}
+
+function populateTransportFrdFilters() {
+    const tabData = globalTransportData[currentTransportTab] || [];
+    
+    // Получаем уникальные значения ФРД для текущей вкладки
+    const frdAOptions = [...new Set(tabData.map(item => item.frdA).filter(Boolean))].sort();
+    const frdBOptions = [...new Set(tabData.map(item => item.frdB).filter(Boolean))].sort();
+    
+    const selectA = document.getElementById('transportSelectFrdA');
+    const selectB = document.getElementById('transportSelectFrdB');
+    
+    // Наполняем ФРД выезда
+    selectA.innerHTML = '<option value="all">Всі ФРД виїзду</option>';
+    frdAOptions.forEach(opt => {
+        const option = document.createElement('option');
+        option.value = opt;
+        option.innerText = opt;
+        if (transportFilters.frdA === opt) option.selected = true;
+        selectA.appendChild(option);
+    });
+    
+    // Наполняем ФРД приезда (только если это Межрегиональное направление)
+    if (currentTransportTab === 'Міжрегіональна') {
+        selectB.classList.remove('hidden');
+        selectB.innerHTML = '<option value="all">Всі ФРД приїзду</option>';
+        frdBOptions.forEach(opt => {
+            const option = document.createElement('option');
+            option.value = opt;
+            option.innerText = opt;
+            if (transportFilters.frdB === opt) option.selected = true;
+            selectB.appendChild(option);
+        });
+    } else {
+        selectB.classList.add('hidden');
+        transportFilters.frdB = 'all'; // Безопасный сброс
     }
 }

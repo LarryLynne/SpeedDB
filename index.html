@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Дашборд Швидкості Доставки</title>
+    <title>Дашборд Швидкості та Транспорту</title>
     <link rel="stylesheet" href="styles.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 </head>
@@ -11,6 +11,7 @@
     <nav class="main-nav">
         <button class="nav-btn active" data-view="speed">Швидкість доставки</button>
         <button class="nav-btn" data-view="timeline">Таймлайн руху посилок</button>
+        <button class="nav-btn" data-view="transport">Транспорт</button>
     </nav>
 
     <header class="tabs-container">
@@ -32,6 +33,22 @@
             <div class="date-dropdown">
                 <button class="date-dropdown-btn" id="timelineDateDropdownBtn">Оберіть дати</button>
                 <div class="date-dropdown-content" id="timelineDateFilterContainer"></div>
+            </div>
+        </div>
+
+        <div id="transportFilters" class="filter-group hidden">
+            <div class="tabs-group">
+                <button class="tab transport-tab" data-target="Локальна">Місто</button>
+                <button class="tab transport-tab active" data-target="Регіональна">Регіон</button>
+                <button class="tab transport-tab" data-target="Міжрегіональна">ММ</button>
+            </div>
+            
+            <select id="transportSelectFrdA" class="select-filter"></select>
+            <select id="transportSelectFrdB" class="select-filter hidden"></select>
+            
+            <div class="date-dropdown">
+                <button class="date-dropdown-btn" id="transportDateDropdownBtn">Оберіть дати</button>
+                <div class="date-dropdown-content" id="transportDateFilterContainer"></div>
             </div>
         </div>
     </header>
@@ -73,6 +90,21 @@
                         <div id="btnGroupCatB" class="btn-group"></div>
                     </div>
                 </aside>
+            </div>
+        </div>
+
+        <div id="transportWrapper" class="hidden" style="display: flex; flex-direction: column; gap: 12px; width: 100%;">
+            <div class="chart-wrapper">
+                <h3>Вартість за типами ТЗ (грн/кг)</h3>
+                <canvas id="costChart"></canvas>
+            </div>
+            <div class="chart-wrapper" id="utilizationWrapper">
+                <h3>Коефіцієнт утилізації (%)</h3>
+                <canvas id="utilizationChart"></canvas>
+            </div>
+            <div class="chart-wrapper">
+                <h3>Відсоток завантаження (%)</h3>
+                <canvas id="loadChart"></canvas>
             </div>
         </div>
     </main>
